@@ -9,10 +9,11 @@ import {
   ValueNode,
   VariableNode
 } from 'graphql';
-import Maybe from 'graphql/tsutils/Maybe';
 import { NodeAndVarDefs, nodesMatch } from '../ast';
 import { identifyFunc } from '../utils';
 import Rewriter, { RewriterOpts, Variables } from './Rewriter';
+
+type Maybe<T> = null | undefined | T;
 
 interface FieldArgTypeRewriterOpts extends RewriterOpts {
   argName: string;
