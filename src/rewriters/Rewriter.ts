@@ -6,9 +6,10 @@ export type Variables = { [key: string]: any } | undefined;
 export type RootType = 'query' | 'mutation' | 'fragment';
 
 export interface RewriterOpts {
-  fieldName: string;
+  fieldName?: string;
   rootTypes?: RootType[];
   matchConditions?: matchCondition[];
+  includeNonFieldPathsInMatch?: boolean;
 }
 
 /**
@@ -16,19 +17,40 @@ export interface RewriterOpts {
  * Extend this class and overwrite its methods to create a new rewriter
  */
 abstract class Rewriter {
-  protected fieldName: string;
+  public includeNonFieldPathsInMatch: boolean = false;
   protected rootTypes: RootType[] = ['query', 'mutation', 'fragment'];
+  protected fieldName?: string;
   protected matchConditions?: matchCondition[];
 
-  constructor({ fieldName, rootTypes, matchConditions }: RewriterOpts) {
+  constructor({
+    fieldName,
+    rootTypes,
+    matchConditions,
+    includeNonFieldPathsInMatch = false
+  }: RewriterOpts) {
     this.fieldName = fieldName;
     this.matchConditions = matchConditions;
+    this.includeNonFieldPathsInMatch = includeNonFieldPathsInMatch;
+    if (!this.fieldName && !this.matchConditions) {
+      throw new Error(
+        'Neither a fieldName or matchConditions were provided. Please choose to pass either one in order to be able to detect which fields to rewrite.'
+      );
+    }
     if (rootTypes) this.rootTypes = rootTypes;
   }
 
   public matches(nodeAndVarDefs: NodeAndVarDefs, parents: ReadonlyArray<ASTNode>): boolean {
     const { node } = nodeAndVarDefs;
-    if (node.kind !== 'Field' || node.name.value !== this.fieldName) return false;
+
+    // If no fieldName is provided, check for defined matchConditions.
+    // This avoids having to define one rewriter for many fields individually.
+    // Alternatively, regex matching for fieldName could be implemented.
+    if (
+      node.kind !== 'Field' ||
+      (this.fieldName ? node.name.value !== this.fieldName : !this.matchConditions)
+    ) {
+      return false;
+    }
     const root = parents[0];
     if (
       root.kind === 'OperationDefinition' &&
@@ -48,7 +70,7 @@ abstract class Rewriter {
     return true;
   }
 
-  public rewriteQuery(nodeAndVarDefs: NodeAndVarDefs): NodeAndVarDefs {
+  public rewriteQuery(nodeAndVarDefs: NodeAndVarDefs, variables: Variables): NodeAndVarDefs {
     return nodeAndVarDefs;
   }
 
@@ -60,7 +82,12 @@ abstract class Rewriter {
    * Receives the parent object of the matched field with the key of the matched field.
    * For arrays, the index of the element is also present.
    */
-  public rewriteResponse(response: any, key: string, index?: number): any {
+  public rewriteResponse(
+    response: any,
+    key: string,
+    index?: number,
+    nodeMatchAndParents?: ASTNode[]
+  ): any {
     return response;
   }
 
@@ -77,7 +104,11 @@ abstract class Rewriter {
 
     // Extract the position
     if (Array.isArray(element)) {
-      element = element[index!] || null;
+      // if element is an empty array do not try to get
+      // one of its array elements
+      if (element.length !== 0) {
+        element = element[index!] || null;
+      }
     }
 
     return element;
